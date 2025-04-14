@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../lib/auth';
 import { MealsProvider } from '../lib/meals';
+import { ProgramsProvider } from '../lib/programs/programs-context';
 import { View, ActivityIndicator } from 'react-native';
 
 // Custom theme with modern color palette
@@ -53,22 +54,11 @@ function RootLayoutNav() {
       }}
     >
       {isAuthenticated || isGuestMode ? (
-        // Authenticated/Guest routes
-        <>
-          <Stack.Screen name="dashboard/index" />
-          <Stack.Screen name="dashboard/add-meal" />
-          <Stack.Screen name="dashboard/meal-details" />
-        </>
+        // These screens are only accessible when authenticated or in guest mode
+        <Stack.Screen name="dashboard" />
       ) : (
-        // Auth routes
-        <>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="onboarding/index" />
-          <Stack.Screen name="onboarding/goal-setting" />
-          <Stack.Screen name="auth/sign-in" />
-          <Stack.Screen name="auth/sign-up" />
-          <Stack.Screen name="auth/reset-password" />
-        </>
+        // These screens are only accessible when not authenticated
+        <Stack.Screen name="(auth)" />
       )}
     </Stack>
   );
@@ -82,7 +72,9 @@ export default function RootLayout() {
         <StatusBar style="auto" />
         <AuthProvider>
           <MealsProvider>
-            <RootLayoutNav />
+            <ProgramsProvider>
+              <RootLayoutNav />
+            </ProgramsProvider>
           </MealsProvider>
         </AuthProvider>
       </SafeAreaProvider>

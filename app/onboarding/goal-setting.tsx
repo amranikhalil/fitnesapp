@@ -5,6 +5,8 @@ import Slider from '@react-native-community/slider';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { usePrograms } from '../../lib/programs/programs-context';
+import { calculateBMR, calculateTDEE, calculateTargetCalories } from '../../lib/programs/meal-programs';
 
 interface GoalType {
   id: string;
@@ -36,12 +38,13 @@ const goalTypes: GoalType[] = [
 
 export default function GoalSetting() {
   const router = useRouter();
+  const { setUserMetrics, selectProgram } = usePrograms();
   const [selectedGoal, setSelectedGoal] = useState('maintain');
   const [weight, setWeight] = useState('');
   const [targetWeight, setTargetWeight] = useState('');
   const [height, setHeight] = useState('');
   const [age, setAge] = useState('');
-  const [gender, setGender] = useState('');
+  const [gender, setGender] = useState('male');
   const [activityLevel, setActivityLevel] = useState('moderate');
   const [calorieTarget, setCalorieTarget] = useState(2000);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,12 +71,50 @@ export default function GoalSetting() {
     setIsLoading(true);
 
     try {
-      // In a real app, we would save the user's goals to Supabase here
-      // For now, we'll just simulate a successful save
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Parse input values
+      const weightValue = parseFloat(weight);
+      const heightValue = parseFloat(height);
+      const ageValue = parseInt(age);
       
-      // Navigate to dashboard after saving goals
-      router.replace('/dashboard');
+      // Calculate target calories based on metrics if user hasn't adjusted the slider
+      let calculatedCalorieTarget = calorieTarget;
+      
+      if (weightValue && heightValue && ageValue && gender) {
+        const bmr = calculateBMR(weightValue, heightValue, ageValue, gender);
+        const tdee = calculateTDEE(bmr, activityLevel);
+        calculatedCalorieTarget = calculateTargetCalories(tdee, selectedGoal);
+      }
+      
+      // Ensure we have valid metrics by using defaults where necessary
+      const userMetrics = {
+        weight: weightValue || 70, // Default if not provided
+        height: heightValue || 170,
+        age: ageValue || 30,
+        gender: gender || 'male',
+        activityLevel: activityLevel || 'moderate',
+        goal: selectedGoal || 'maintain',
+        targetCalories: calculatedCalorieTarget || 2000,
+      };
+      
+      console.log('Saving user metrics:', userMetrics);
+      
+      // Save user metrics to Programs context
+      await setUserMetrics(userMetrics);
+      
+      // Pre-select a default program
+      const { mealPrograms } = require('../../lib/programs/meal-programs');
+      if (mealPrograms && mealPrograms.length > 0) {
+        // Find a program that matches the user's goal
+        const matchingProgram = mealPrograms.find(p => p.targetGoal === selectedGoal);
+        if (matchingProgram) {
+          console.log('Pre-selecting program:', matchingProgram.name);
+          // Select this program
+          await selectProgram(matchingProgram.id);
+        }
+      }
+      
+      // Navigate to the program recommendations screen
+      router.push('/onboarding/program-recommendations');
     } catch (error) {
       console.error('Error saving goals:', error);
       // Handle error

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, FlatList, RefreshControl } from 'react-native';
-import { Text, Card, FAB, Surface, ProgressBar, IconButton, Divider, useTheme, Avatar, Button } from 'react-native-paper';
+import { Text, Card, FAB, Surface, ProgressBar, IconButton, Divider, useTheme, Avatar, Button, Chip } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -8,74 +8,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../lib/auth';
 import { useMeals, Meal, FoodItem } from '../../lib/meals';
-
-// Remove the mock data since we're using the context
-// interface Meal {
-//   id: string;
-//   name: string;
-//   time: string;
-//   calories: number;
-//   items: FoodItem[];
-// }
-
-// interface FoodItem {
-//   id: string;
-//   name: string;
-//   calories: number;
-//   protein: number;
-//   carbs: number;
-//   fat: number;
-// }
-
-// const mockMeals: Meal[] = [
-//   {
-//     id: '1',
-//     name: 'Breakfast',
-//     time: '8:30 AM',
-//     calories: 450,
-//     items: [
-//       { id: '1', name: 'Oatmeal', calories: 150, protein: 5, carbs: 27, fat: 3 },
-//       { id: '2', name: 'Banana', calories: 105, protein: 1, carbs: 27, fat: 0 },
-//       { id: '3', name: 'Almond Milk', calories: 30, protein: 1, carbs: 1, fat: 2.5 },
-//       { id: '4', name: 'Honey', calories: 65, protein: 0, carbs: 17, fat: 0 },
-//     ],
-//   },
-//   {
-//     id: '2',
-//     name: 'Lunch',
-//     time: '12:45 PM',
-//     calories: 620,
-//     items: [
-//       { id: '1', name: 'Chicken Salad', calories: 350, protein: 30, carbs: 10, fat: 20 },
-//       { id: '2', name: 'Whole Grain Bread', calories: 180, protein: 8, carbs: 33, fat: 2 },
-//       { id: '3', name: 'Apple', calories: 90, protein: 0, carbs: 25, fat: 0 },
-//     ],
-//   },
-// ];
+import { usePrograms } from '../../lib/programs/programs-context';
 
 export default function Dashboard() {
   const router = useRouter();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { signOut } = useAuth();
-  const { meals, addMeal } = useMeals();
+  const { user, isGuestMode, signOut } = useAuth();
+  const { meals, dailyCalorieTarget, addMeal } = useMeals();
+  const { selectedProgram, userMetrics } = usePrograms();
   const [expandedMealId, setExpandedMealId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const params = useLocalSearchParams();
 
   // Daily targets
-  const dailyCalorieTarget = 2000;
-  const totalCalories = meals.reduce((sum, meal) => sum + meal.calories, 0);
-  const remainingCalories = dailyCalorieTarget - totalCalories;
-  const calorieProgress = totalCalories / dailyCalorieTarget;
+  const totalCaloriesConsumed = meals.reduce((sum, meal) => sum + meal.calories, 0);
+  const remainingCalories = dailyCalorieTarget - totalCaloriesConsumed;
+  const calorieProgress = totalCaloriesConsumed / dailyCalorieTarget;
 
-  // Calculate macros
-  const totalProtein = meals.reduce((sum, meal) => 
-    sum + meal.items.reduce((mealSum, item) => mealSum + item.protein, 0), 0);
-  const totalCarbs = meals.reduce((sum, meal) => 
-    sum + meal.items.reduce((mealSum, item) => mealSum + item.carbs, 0), 0);
-  const totalFat = meals.reduce((sum, meal) => 
-    sum + meal.items.reduce((mealSum, item) => mealSum + item.fat, 0), 0);
+  // Format date for display
+  const today = new Date();
+  const formattedDate = today.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  const handleViewMealProgram = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Use tab navigation instead of pushing to a specific screen
+    router.push('/dashboard/meal-program/');
+  };
 
   // Handle new meal from add-meal screen
   useEffect(() => {
@@ -99,16 +62,7 @@ export default function Dashboard() {
     }
   }, [params.newMeal]);
 
-  const toggleMealExpansion = (mealId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setExpandedMealId(expandedMealId === mealId ? null : mealId);
-  };
-
-  const handleAddMeal = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.push('/dashboard/add-meal');
-  };
-
+  // Handle logout
   const handleLogout = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -119,13 +73,24 @@ export default function Dashboard() {
     }
   };
 
+  // Refresh data
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    // In a real app, we would fetch new data here
     setTimeout(() => {
       setRefreshing(false);
-    }, 1500);
+    }, 1000);
   }, []);
+
+  // Toggle meal expansion
+  const toggleMealExpansion = (mealId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setExpandedMealId(expandedMealId === mealId ? null : mealId);
+  };
+
+  const handleAddMeal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push('/dashboard/add-meal');
+  };
 
   const renderMealItem = ({ item }: { item: Meal }) => {
     const isExpanded = expandedMealId === item.id;
@@ -139,7 +104,7 @@ export default function Dashboard() {
                 <Text variant="titleMedium" style={{ color: theme.colors.primary }}>{item.name}</Text>
                 <Text variant="bodySmall" style={styles.timeText}>{item.time}</Text>
               </View>
-              <View style={styles.calorieContainer}>
+              <View style={styles.mealCalories}>
                 <Text variant="titleMedium">{item.calories}</Text>
                 <Text variant="bodySmall">calories</Text>
               </View>
@@ -197,77 +162,104 @@ export default function Dashboard() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />
         }
       >
-        <LinearGradient
-          colors={[theme.colors.primaryContainer, theme.colors.surfaceVariant]}
-          style={styles.summaryCard}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.calorieRow}>
-            <View style={styles.calorieItem}>
-              <Text variant="titleLarge">{totalCalories}</Text>
-              <Text variant="bodySmall">consumed</Text>
+        {/* Today's Summary */}
+        <Surface style={styles.summaryCard} elevation={0}>
+          <View style={styles.dateContainer}>
+            <Text variant="titleMedium" style={styles.dateText}>{formattedDate}</Text>
+            {isGuestMode && (
+              <Chip icon="account" style={styles.guestChip}>Guest Mode</Chip>
+            )}
+          </View>
+          
+          <View style={styles.calorieContainer}>
+            <View style={styles.calorieInfo}>
+              <Text variant="displaySmall" style={styles.calorieCount}>
+                {totalCaloriesConsumed}
+              </Text>
+              <Text variant="bodyMedium" style={styles.calorieLabel}>calories consumed</Text>
             </View>
-            <View style={styles.dividerVertical} />
-            <View style={styles.calorieItem}>
-              <Text variant="titleLarge">{remainingCalories}</Text>
-              <Text variant="bodySmall">remaining</Text>
-            </View>
-            <View style={styles.dividerVertical} />
-            <View style={styles.calorieItem}>
-              <Text variant="titleLarge">{dailyCalorieTarget}</Text>
-              <Text variant="bodySmall">target</Text>
+            
+            <View style={styles.calorieInfo}>
+              <Text variant="displaySmall" style={[styles.calorieCount, { color: theme.colors.secondary }]}>
+                {remainingCalories}
+              </Text>
+              <Text variant="bodyMedium" style={styles.calorieLabel}>calories remaining</Text>
             </View>
           </View>
-
+          
           <View style={styles.progressContainer}>
             <ProgressBar 
-              progress={calorieProgress} 
+              progress={calorieProgress > 1 ? 1 : calorieProgress} 
+              color={calorieProgress > 1 ? theme.colors.error : theme.colors.primary}
               style={styles.progressBar} 
-              color={theme.colors.primary} 
             />
-            <Text variant="bodySmall" style={styles.progressText}>
-              {Math.round(calorieProgress * 100)}% of daily goal
+            <Text variant="bodySmall" style={styles.targetText}>
+              Daily Target: {dailyCalorieTarget} calories
             </Text>
-          </View>
-        </LinearGradient>
-
-        <Surface style={styles.macroCard} elevation={0}>
-          <Text variant="titleMedium" style={styles.macroTitle}>Macronutrients</Text>
-          <View style={styles.macroContainer}>
-            <View style={styles.macroItem}>
-              <Avatar.Icon 
-                size={40} 
-                icon="food-drumstick" 
-                style={[styles.macroIcon, { backgroundColor: theme.colors.primaryContainer }]}
-                color={theme.colors.primary}
-              />
-              <Text variant="bodyMedium" style={styles.macroValue}>{totalProtein}g</Text>
-              <Text variant="bodySmall">Protein</Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Avatar.Icon 
-                size={40} 
-                icon="bread-slice" 
-                style={[styles.macroIcon, { backgroundColor: theme.colors.secondaryContainer }]}
-                color={theme.colors.secondary}
-              />
-              <Text variant="bodyMedium" style={styles.macroValue}>{totalCarbs}g</Text>
-              <Text variant="bodySmall">Carbs</Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Avatar.Icon 
-                size={40} 
-                icon="oil" 
-                style={[styles.macroIcon, { backgroundColor: '#F0E6FF' }]}
-                color={theme.colors.tertiary}
-              />
-              <Text variant="bodyMedium" style={styles.macroValue}>{totalFat}g</Text>
-              <Text variant="bodySmall">Fat</Text>
-            </View>
           </View>
         </Surface>
 
+        {/* Current Meal Program */}
+        <Surface style={styles.programCard} elevation={0}>
+          <View style={styles.programHeader}>
+            <Text variant="titleMedium" style={styles.sectionTitle}>Your Meal Program</Text>
+            <Button 
+              mode="text" 
+              onPress={handleViewMealProgram}
+              icon="pencil"
+              compact
+            >
+              Change
+            </Button>
+          </View>
+          
+          {selectedProgram ? (
+            <View style={styles.programInfo}>
+              <View style={styles.programNameRow}>
+                <Avatar.Icon 
+                  size={40} 
+                  icon="food-fork-drink" 
+                  style={{ backgroundColor: theme.colors.primaryContainer }}
+                  color={theme.colors.primary}
+                />
+                <View style={styles.programTextContainer}>
+                  <Text variant="titleMedium" style={styles.programName}>{selectedProgram.name}</Text>
+                  <Text variant="bodySmall" style={styles.programDescription}>{selectedProgram.description}</Text>
+                </View>
+              </View>
+              
+              <View style={styles.programStats}>
+                <Chip icon="fire" style={styles.programStat}>
+                  {selectedProgram.calorieRange.min}-{selectedProgram.calorieRange.max} cal
+                </Chip>
+                <Chip icon="food-drumstick" style={styles.programStat}>
+                  {selectedProgram.macroDistribution.protein}% protein
+                </Chip>
+                <Chip icon="bread-slice" style={styles.programStat}>
+                  {selectedProgram.macroDistribution.carbs}% carbs
+                </Chip>
+                <Chip icon="oil" style={styles.programStat}>
+                  {selectedProgram.macroDistribution.fat}% fat
+                </Chip>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.noProgramContainer}>
+              <Text variant="bodyMedium" style={styles.noProgramText}>
+                You haven't selected a meal program yet
+              </Text>
+              <Button 
+                mode="contained" 
+                onPress={handleViewMealProgram}
+                style={{ marginTop: 8 }}
+              >
+                Choose a Program
+              </Button>
+            </View>
+          )}
+        </Surface>
+
+        {/* Today's Meals */}
         <Text variant="titleMedium" style={styles.sectionTitle}>Today's Meals</Text>
 
         <FlatList
@@ -316,19 +308,34 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 24,
   },
-  calorieRow: {
+  dateContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  dateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  guestChip: {
+    marginLeft: 8,
+  },
+  calorieContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
     marginBottom: 16,
   },
-  calorieItem: {
+  calorieInfo: {
     alignItems: 'center',
   },
-  dividerVertical: {
-    height: 40,
-    width: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  calorieCount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  calorieLabel: {
+    color: 'rgba(0, 0, 0, 0.6)',
   },
   progressContainer: {
     marginTop: 8,
@@ -337,33 +344,54 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
   },
-  progressText: {
+  targetText: {
     textAlign: 'center',
     marginTop: 8,
     color: 'rgba(0, 0, 0, 0.6)',
   },
-  macroCard: {
+  programCard: {
     padding: 16,
     borderRadius: 16,
     marginBottom: 24,
   },
-  macroTitle: {
+  programHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 16,
+  },
+  programInfo: {
+    marginBottom: 16,
+  },
+  programNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  programTextContainer: {
+    marginLeft: 16,
+  },
+  programName: {
+    fontSize: 18,
     fontWeight: 'bold',
   },
-  macroContainer: {
+  programDescription: {
+    color: 'rgba(0, 0, 0, 0.6)',
+  },
+  programStats: {
     flexDirection: 'row',
     justifyContent: 'space-around',
   },
-  macroItem: {
+  programStat: {
+    marginRight: 8,
+  },
+  noProgramContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
   },
-  macroIcon: {
+  noProgramText: {
     marginBottom: 8,
-  },
-  macroValue: {
-    fontWeight: 'bold',
-    marginBottom: 4,
   },
   sectionTitle: {
     marginBottom: 16,
@@ -373,8 +401,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   mealCard: {
-    borderRadius: 12,
-    overflow: 'hidden',
+    marginBottom: 16,
   },
   mealHeader: {
     flexDirection: 'row',
@@ -388,31 +415,12 @@ const styles = StyleSheet.create({
     color: 'rgba(0, 0, 0, 0.6)',
     marginTop: 4,
   },
-  calorieContainer: {
-    alignItems: 'center',
-  },
-  expandedContent: {
-    paddingTop: 16,
-  },
-  itemsTitle: {
-    marginBottom: 8,
-    fontWeight: 'bold',
-  },
-  foodItem: {
-    marginBottom: 12,
-  },
-  macroRow: {
-    flexDirection: 'row',
-    marginTop: 4,
-  },
-  macroText: {
-    marginLeft: 8,
+  mealCalories: {
+    alignItems: 'flex-end',
   },
   fab: {
     position: 'absolute',
     right: 16,
-  },
-  viewDetailsButton: {
-    marginTop: 16,
+    bottom: 16,
   },
 });

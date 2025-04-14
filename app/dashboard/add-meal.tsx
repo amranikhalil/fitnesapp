@@ -174,8 +174,10 @@ export default function AddMeal() {
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       calories: totalCalories,
       items: foodItems,
+      image: mealImage || undefined, // Include the meal image if available
     };
     
+    console.log('Adding new meal with ID:', newMeal.id);
     // Add the meal using the context
     addMeal(newMeal);
     

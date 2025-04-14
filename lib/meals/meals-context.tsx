@@ -8,6 +8,7 @@ export interface FoodItem {
   protein: number;
   carbs: number;
   fat: number;
+  servingSize?: string; // Optional serving size information
 }
 
 export interface Meal {
@@ -16,6 +17,7 @@ export interface Meal {
   time: string;
   calories: number;
   items: FoodItem[];
+  image?: string; // Optional meal image URI
 }
 
 // Mock initial meals
