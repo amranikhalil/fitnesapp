@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../lib/auth';
 import { useMeals, Meal, FoodItem } from '../../lib/meals';
 import { usePrograms } from '../../lib/programs/programs-context';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -26,6 +27,14 @@ export default function Dashboard() {
   const remainingCalories = dailyCalorieTarget - totalCaloriesConsumed;
   const calorieProgress = totalCaloriesConsumed / dailyCalorieTarget;
 
+  // Macros calculations (simplified estimates)
+  const totalProtein = meals.reduce((sum, meal) => 
+    sum + meal.items.reduce((mealSum, item) => mealSum + (item.protein || 0), 0), 0);
+  const totalCarbs = meals.reduce((sum, meal) => 
+    sum + meal.items.reduce((mealSum, item) => mealSum + (item.carbs || 0), 0), 0);
+  const totalFat = meals.reduce((sum, meal) => 
+    sum + meal.items.reduce((mealSum, item) => mealSum + (item.fat || 0), 0), 0);
+
   // Format date for display
   const today = new Date();
   const formattedDate = today.toLocaleDateString('en-US', {
@@ -36,7 +45,6 @@ export default function Dashboard() {
 
   const handleViewMealProgram = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Use tab navigation instead of pushing to a specific screen
     router.push('/dashboard/meal-program/');
   };
 
@@ -95,17 +103,34 @@ export default function Dashboard() {
   const renderMealItem = ({ item }: { item: Meal }) => {
     const isExpanded = expandedMealId === item.id;
 
+    // Determine the meal icon based on the meal name
+    let mealIcon = 'restaurant-outline';
+    if (item.name.toLowerCase().includes('breakfast')) {
+      mealIcon = 'cafe-outline';
+    } else if (item.name.toLowerCase().includes('lunch')) {
+      mealIcon = 'fast-food-outline';
+    } else if (item.name.toLowerCase().includes('dinner')) {
+      mealIcon = 'restaurant-outline';
+    } else if (item.name.toLowerCase().includes('snack')) {
+      mealIcon = 'nutrition-outline';
+    }
+
     return (
-      <Card style={styles.mealCard} mode="outlined">
+      <Card style={styles.mealCard} elevation={2}>
         <TouchableOpacity onPress={() => toggleMealExpansion(item.id)}>
           <Card.Content>
             <View style={styles.mealHeader}>
-              <View style={styles.mealInfo}>
-                <Text variant="titleMedium" style={{ color: theme.colors.primary }}>{item.name}</Text>
-                <Text variant="bodySmall" style={styles.timeText}>{item.time}</Text>
+              <View style={styles.mealTitleContainer}>
+                <View style={styles.mealIconContainer}>
+                  <Ionicons name={mealIcon as any} size={20} color={theme.colors.primary} />
+                </View>
+                <View style={styles.mealInfo}>
+                  <Text variant="titleMedium" style={{ color: theme.colors.primary, fontWeight: 'bold' }}>{item.name}</Text>
+                  <Text variant="bodySmall" style={styles.timeText}>{item.time}</Text>
+                </View>
               </View>
               <View style={styles.mealCalories}>
-                <Text variant="titleMedium">{item.calories}</Text>
+                <Text variant="titleMedium" style={{ fontWeight: 'bold' }}>{item.calories}</Text>
                 <Text variant="bodySmall">calories</Text>
               </View>
             </View>
@@ -119,20 +144,41 @@ export default function Dashboard() {
               <Text variant="titleSmall" style={styles.itemsTitle}>Food Items</Text>
               {item.items.map((foodItem) => (
                 <View key={foodItem.id} style={styles.foodItem}>
-                  <Text variant="bodyMedium">{foodItem.name}</Text>
+                  <View style={styles.foodItemHeader}>
+                    <Text variant="bodyMedium" style={{ fontWeight: '500' }}>{foodItem.name}</Text>
+                    <Text variant="bodyMedium" style={{ fontWeight: 'bold' }}>{foodItem.calories} cal</Text>
+                  </View>
                   <View style={styles.macroRow}>
-                    <Text variant="bodySmall">{foodItem.calories} cal</Text>
-                    <Text variant="bodySmall" style={[styles.macroText, { color: theme.colors.primary }]}>P: {foodItem.protein}g</Text>
-                    <Text variant="bodySmall" style={[styles.macroText, { color: theme.colors.secondary }]}>C: {foodItem.carbs}g</Text>
-                    <Text variant="bodySmall" style={[styles.macroText, { color: theme.colors.tertiary }]}>F: {foodItem.fat}g</Text>
+                    <Chip 
+                      icon="food-drumstick" 
+                      style={[styles.macroChip, { backgroundColor: 'rgba(76, 175, 80, 0.1)' }]} 
+                      textStyle={{ fontSize: 12 }}
+                    >
+                      P: {foodItem.protein}g
+                    </Chip>
+                    <Chip 
+                      icon="bread-slice" 
+                      style={[styles.macroChip, { backgroundColor: 'rgba(33, 150, 243, 0.1)' }]} 
+                      textStyle={{ fontSize: 12 }}
+                    >
+                      C: {foodItem.carbs}g
+                    </Chip>
+                    <Chip 
+                      icon="oil" 
+                      style={[styles.macroChip, { backgroundColor: 'rgba(255, 152, 0, 0.1)' }]} 
+                      textStyle={{ fontSize: 12 }}
+                    >
+                      F: {foodItem.fat}g
+                    </Chip>
                   </View>
                 </View>
               ))}
               <Button 
-                mode="text" 
+                mode="outlined" 
                 onPress={() => router.push(`/dashboard/meal-details?id=${item.id}`)}
                 style={styles.viewDetailsButton}
-                textColor={theme.colors.primary}
+                icon="arrow-right"
+                contentStyle={{ flexDirection: 'row-reverse' }}
               >
                 View Details
               </Button>
@@ -145,15 +191,29 @@ export default function Dashboard() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text variant="headlineSmall" style={styles.headerTitle}>Today's Summary</Text>
-        <IconButton 
-          icon="logout" 
-          size={24} 
-          onPress={handleLogout}
-          iconColor={theme.colors.primary}
-        />
-      </View>
+      <LinearGradient
+        colors={['rgba(0, 120, 255, 0.1)', 'rgba(0, 120, 255, 0.05)', 'rgba(255, 255, 255, 0)']}
+        style={styles.headerGradient}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text variant="headlineSmall" style={styles.headerTitle}>My Daily Calories</Text>
+            <Text variant="bodyMedium" style={styles.headerSubtitle}>{formattedDate}</Text>
+          </View>
+          <View style={styles.headerActions}>
+            {isGuestMode && (
+              <Chip icon="account" style={styles.guestChip} compact>Guest</Chip>
+            )}
+            <IconButton 
+              icon="logout" 
+              size={24} 
+              onPress={handleLogout}
+              iconColor={theme.colors.primary}
+              style={styles.logoutButton}
+            />
+          </View>
+        </View>
+      </LinearGradient>
 
       <ScrollView 
         style={styles.scrollView} 
@@ -163,120 +223,95 @@ export default function Dashboard() {
         }
       >
         {/* Today's Summary */}
-        <Surface style={styles.summaryCard} elevation={0}>
-          <View style={styles.dateContainer}>
-            <Text variant="titleMedium" style={styles.dateText}>{formattedDate}</Text>
-            {isGuestMode && (
-              <Chip icon="account" style={styles.guestChip}>Guest Mode</Chip>
-            )}
-          </View>
-          
+        <Surface style={styles.summaryCard} elevation={4}>
           <View style={styles.calorieContainer}>
             <View style={styles.calorieInfo}>
               <Text variant="displaySmall" style={styles.calorieCount}>
                 {totalCaloriesConsumed}
               </Text>
-              <Text variant="bodyMedium" style={styles.calorieLabel}>calories consumed</Text>
+              <Text variant="bodyMedium" style={styles.calorieLabel}>CONSUMED</Text>
+            </View>
+            
+            <View style={styles.dividerContainer}>
+              <View style={styles.verticalDivider} />
             </View>
             
             <View style={styles.calorieInfo}>
-              <Text variant="displaySmall" style={[styles.calorieCount, { color: theme.colors.secondary }]}>
+              <Text variant="displaySmall" style={[styles.calorieCount, remainingCalories < 0 ? { color: theme.colors.error } : { color: theme.colors.secondary }]}>
                 {remainingCalories}
               </Text>
-              <Text variant="bodyMedium" style={styles.calorieLabel}>calories remaining</Text>
+              <Text variant="bodyMedium" style={styles.calorieLabel}>REMAINING</Text>
             </View>
           </View>
           
           <View style={styles.progressContainer}>
+            <View style={styles.progressLabelContainer}>
+              <Text variant="bodySmall" style={styles.progressLabel}>
+                {Math.round(calorieProgress * 100)}% of Daily Goal
+              </Text>
+              <Text variant="bodySmall" style={styles.targetText}>
+                Target: {dailyCalorieTarget} cal
+              </Text>
+            </View>
             <ProgressBar 
               progress={calorieProgress > 1 ? 1 : calorieProgress} 
               color={calorieProgress > 1 ? theme.colors.error : theme.colors.primary}
               style={styles.progressBar} 
             />
-            <Text variant="bodySmall" style={styles.targetText}>
-              Daily Target: {dailyCalorieTarget} calories
-            </Text>
-          </View>
-        </Surface>
-
-        {/* Current Meal Program */}
-        <Surface style={styles.programCard} elevation={0}>
-          <View style={styles.programHeader}>
-            <Text variant="titleMedium" style={styles.sectionTitle}>Your Meal Program</Text>
-            <Button 
-              mode="text" 
-              onPress={handleViewMealProgram}
-              icon="pencil"
-              compact
-            >
-              Change
-            </Button>
           </View>
           
-          {selectedProgram ? (
-            <View style={styles.programInfo}>
-              <View style={styles.programNameRow}>
-                <Avatar.Icon 
-                  size={40} 
-                  icon="food-fork-drink" 
-                  style={{ backgroundColor: theme.colors.primaryContainer }}
-                  color={theme.colors.primary}
-                />
-                <View style={styles.programTextContainer}>
-                  <Text variant="titleMedium" style={styles.programName}>{selectedProgram.name}</Text>
-                  <Text variant="bodySmall" style={styles.programDescription}>{selectedProgram.description}</Text>
-                </View>
-              </View>
-              
-              <View style={styles.programStats}>
-                <Chip icon="fire" style={styles.programStat}>
-                  {selectedProgram.calorieRange.min}-{selectedProgram.calorieRange.max} cal
-                </Chip>
-                <Chip icon="food-drumstick" style={styles.programStat}>
-                  {selectedProgram.macroDistribution.protein}% protein
-                </Chip>
-                <Chip icon="bread-slice" style={styles.programStat}>
-                  {selectedProgram.macroDistribution.carbs}% carbs
-                </Chip>
-                <Chip icon="oil" style={styles.programStat}>
-                  {selectedProgram.macroDistribution.fat}% fat
-                </Chip>
-              </View>
+          {/* Macros summary */}
+          <View style={styles.macrosContainer}>
+            <View style={styles.macroItemContainer}>
+              <Text variant="titleLarge" style={[styles.macroValue, { color: '#4CAF50' }]}>{Math.round(totalProtein)}g</Text>
+              <Text variant="bodySmall" style={styles.macroName}>Protein</Text>
             </View>
-          ) : (
-            <View style={styles.noProgramContainer}>
-              <Text variant="bodyMedium" style={styles.noProgramText}>
-                You haven't selected a meal program yet
-              </Text>
-              <Button 
-                mode="contained" 
-                onPress={handleViewMealProgram}
-                style={{ marginTop: 8 }}
-              >
-                Choose a Program
-              </Button>
+            <View style={styles.macroItemContainer}>
+              <Text variant="titleLarge" style={[styles.macroValue, { color: '#2196F3' }]}>{Math.round(totalCarbs)}g</Text>
+              <Text variant="bodySmall" style={styles.macroName}>Carbs</Text>
             </View>
-          )}
+            <View style={styles.macroItemContainer}>
+              <Text variant="titleLarge" style={[styles.macroValue, { color: '#FF9800' }]}>{Math.round(totalFat)}g</Text>
+              <Text variant="bodySmall" style={styles.macroName}>Fat</Text>
+            </View>
+          </View>
         </Surface>
 
-        {/* Today's Meals */}
-        <Text variant="titleMedium" style={styles.sectionTitle}>Today's Meals</Text>
-
-        <FlatList
-          data={meals}
-          renderItem={renderMealItem}
-          keyExtractor={(item) => item.id}
-          scrollEnabled={false}
-          contentContainerStyle={styles.mealsList}
-        />
+        {/* Today's Meals Section */}
+        <View style={styles.mealsContainer}>
+          <Text variant="titleMedium" style={styles.sectionTitle}>Today's Meals</Text>
+          
+          {meals.length === 0 ? (
+            <Surface style={styles.emptyMealsCard} elevation={1}>
+              <Ionicons name="restaurant-outline" size={36} color={theme.colors.primary} />
+              <Text variant="bodyLarge" style={styles.emptyMealsText}>No meals recorded today</Text>
+              <Button 
+                mode="contained" 
+                onPress={handleAddMeal}
+                style={styles.addFirstMealButton}
+                icon="plus"
+              >
+                Add Your First Meal
+              </Button>
+            </Surface>
+          ) : (
+            <FlatList
+              data={meals}
+              renderItem={renderMealItem}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+              ListFooterComponent={<View style={{ height: 80 }} />}
+            />
+          )}
+        </View>
       </ScrollView>
 
       <FAB
         icon="plus"
-        label="Add Meal"
-        style={[styles.fab, { bottom: insets.bottom + 16, backgroundColor: theme.colors.primary }]}
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={handleAddMeal}
-        color={theme.colors.onPrimary}
+        color="white"
       />
     </SafeAreaView>
   );
@@ -286,141 +321,209 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  headerGradient: {
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 20,
   },
   headerTitle: {
     fontWeight: 'bold',
+  },
+  headerSubtitle: {
+    opacity: 0.7,
+    marginTop: 4,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoutButton: {
+    marginLeft: 8,
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 80, // Space for FAB
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   summaryCard: {
-    padding: 16,
     borderRadius: 16,
+    padding: 20,
     marginBottom: 24,
+    backgroundColor: 'white',
   },
   dateContainer: {
+    marginBottom: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
   },
   dateText: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    opacity: 0.7,
   },
   guestChip: {
-    marginLeft: 8,
+    height: 30,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
   calorieContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 24,
   },
   calorieInfo: {
+    flex: 1,
     alignItems: 'center',
   },
   calorieCount: {
-    fontSize: 24,
     fontWeight: 'bold',
   },
   calorieLabel: {
-    color: 'rgba(0, 0, 0, 0.6)',
+    fontSize: 12,
+    marginTop: 4,
+    opacity: 0.7,
+    fontWeight: '500',
+  },
+  dividerContainer: {
+    height: 60,
+    paddingHorizontal: 10,
+    justifyContent: 'center',
+  },
+  verticalDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   progressContainer: {
-    marginTop: 8,
+    marginBottom: 20,
   },
-  progressBar: {
-    height: 10,
-    borderRadius: 5,
-  },
-  targetText: {
-    textAlign: 'center',
-    marginTop: 8,
-    color: 'rgba(0, 0, 0, 0.6)',
-  },
-  programCard: {
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  programHeader: {
+  progressLabelContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 6,
   },
-  programInfo: {
-    marginBottom: 16,
+  progressLabel: {
+    fontWeight: '500',
   },
-  programNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
   },
-  programTextContainer: {
-    marginLeft: 16,
+  targetText: {
+    opacity: 0.7,
   },
-  programName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  programDescription: {
-    color: 'rgba(0, 0, 0, 0.6)',
-  },
-  programStats: {
+  macrosContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
-  programStat: {
-    marginRight: 8,
-  },
-  noProgramContainer: {
+  macroItemContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
   },
-  noProgramText: {
-    marginBottom: 8,
+  macroValue: {
+    fontWeight: 'bold',
+  },
+  macroName: {
+    opacity: 0.7,
+    marginTop: 2,
+  },
+  mealsContainer: {
+    marginBottom: 16,
   },
   sectionTitle: {
     marginBottom: 16,
     fontWeight: 'bold',
   },
-  mealsList: {
-    gap: 12,
-  },
   mealCard: {
-    marginBottom: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: 'white',
   },
   mealHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  mealTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  mealIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0, 120, 255, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
   mealInfo: {
     flex: 1,
   },
   timeText: {
-    color: 'rgba(0, 0, 0, 0.6)',
-    marginTop: 4,
+    opacity: 0.6,
+    marginTop: 2,
   },
   mealCalories: {
     alignItems: 'flex-end',
   },
+  expandedContent: {
+    paddingTop: 16,
+  },
+  itemsTitle: {
+    marginBottom: 12,
+    fontWeight: 'bold',
+  },
+  foodItem: {
+    marginBottom: 12,
+  },
+  foodItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  macroRow: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  macroChip: {
+    marginRight: 8,
+    height: 28,
+  },
+  macroText: {
+    marginRight: 8,
+  },
+  viewDetailsButton: {
+    marginTop: 8,
+    alignSelf: 'flex-end',
+  },
+  emptyMealsCard: {
+    padding: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    backgroundColor: 'white',
+  },
+  emptyMealsText: {
+    marginTop: 16,
+    marginBottom: 24,
+    textAlign: 'center',
+    opacity: 0.7,
+  },
+  addFirstMealButton: {
+    borderRadius: 8,
+  },
   fab: {
     position: 'absolute',
-    right: 16,
-    bottom: 16,
+    right: 20,
+    bottom: 20,
+    borderRadius: 28,
   },
 });

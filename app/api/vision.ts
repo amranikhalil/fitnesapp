@@ -1,4 +1,3 @@
-import { ExpoRequest, ExpoResponse } from 'expo-router/server';
 import axios from 'axios';
 import { config } from '../../lib/config';
 
@@ -6,16 +5,13 @@ import { config } from '../../lib/config';
  * Server-side proxy for Google Cloud Vision API
  * This helps avoid CORS issues and keeps the API key more secure
  */
-export async function POST(request: typeof ExpoRequest): Promise<typeof ExpoResponse> {
+export async function POST(request) {
   try {
     // Get the image data from the request
     const { imageBase64 } = await request.json();
     
     if (!imageBase64) {
-      return new ExpoResponse(
-        JSON.stringify({ error: 'No image data provided' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
+      return Response.json({ error: 'No image data provided' }, { status: 400 });
     }
     
     // Prepare the request to Google Cloud Vision API
@@ -46,23 +42,16 @@ export async function POST(request: typeof ExpoRequest): Promise<typeof ExpoResp
     const response = await axios.post(apiUrl, requestData);
     
     // Return the API response
-    return new ExpoResponse(
-      JSON.stringify(response.data),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return Response.json(response.data);
+  } catch (error) {
+    console.error('Error with Vision API:', error);
     
-  } catch (error: any) {
-    console.error('Vision API proxy error:', error);
-    
-    // Return error details for debugging
-    return new ExpoResponse(
-      JSON.stringify({ 
-        error: 'Vision API error', 
-        message: error.message,
-        status: error.response?.status,
-        details: error.response?.data
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    // Return error response
+    return Response.json({ error: 'Failed to process image' }, { status: 500 });
   }
 }
+
+// Add a default export for expo-router
+export default {
+  POST
+};

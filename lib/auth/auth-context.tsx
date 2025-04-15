@@ -20,18 +20,15 @@ const initialState: AuthState = {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>(initialState);
 
-  // Listen for authentication state changes
+  // Initialize session state
   useEffect(() => {
-    // Check if there's an active session
     const checkSession = async () => {
       try {
-        // Check if user previously used guest mode
-        const storedGuestMode = await AsyncStorage.getItem('guestMode');
-        
-        if (storedGuestMode === 'true') {
+        // Check for guest mode first
+        const isGuest = await AsyncStorage.getItem('guest_mode');
+        if (isGuest === 'true') {
           setState({
-            session: null,
-            user: null,
+            ...initialState,
             isLoading: false,
             isAuthenticated: false,
             isGuestMode: true,
@@ -39,7 +36,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         
-        const { data: { session } } = await supabase.auth.getSession();
+        // Get the current session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          // Clear any invalid session data
+          await supabase.auth.signOut();
+          setState({
+            ...initialState,
+            isLoading: false,
+          });
+          return;
+        }
         
         if (session) {
           setState({
@@ -57,6 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('Error checking session:', error);
+        // Handle any exceptions by clearing state
+        await supabase.auth.signOut();
         setState({
           ...initialState,
           isLoading: false,
@@ -66,20 +77,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     checkSession();
 
-    // Subscribe to auth changes
+    // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setState({
-          session,
-          user: session?.user ?? null,
-          isLoading: false,
-          isAuthenticated: !!session,
-          isGuestMode: false,
-        });
+      async (event, session) => {
+        console.log('Auth state changed:', event);
+        
+        if (event === 'SIGNED_IN' && session) {
+          setState({
+            session,
+            user: session.user,
+            isLoading: false,
+            isAuthenticated: true,
+            isGuestMode: false,
+          });
+        } else if (event === 'SIGNED_OUT') {
+          setState({
+            ...initialState,
+            isLoading: false,
+          });
+        } else if (event === 'TOKEN_REFRESHED' && session) {
+          setState({
+            session,
+            user: session.user,
+            isLoading: false,
+            isAuthenticated: true,
+            isGuestMode: false,
+          });
+        } else if (event === 'USER_UPDATED' && session) {
+          setState({
+            session,
+            user: session.user,
+            isLoading: false,
+            isAuthenticated: true,
+            isGuestMode: false,
+          });
+        }
       }
     );
 
-    // Cleanup subscription
     return () => {
       subscription.unsubscribe();
     };
@@ -95,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // If sign up is successful, turn off guest mode
       if (!error) {
-        await AsyncStorage.removeItem('guestMode');
+        await AsyncStorage.removeItem('guest_mode');
         setState(prevState => ({
           ...prevState,
           isGuestMode: false
@@ -119,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // If sign in is successful, turn off guest mode
       if (!error) {
-        await AsyncStorage.removeItem('guestMode');
+        await AsyncStorage.removeItem('guest_mode');
         setState(prevState => ({
           ...prevState,
           isGuestMode: false
@@ -138,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await supabase.auth.signOut();
       // Also clear guest mode state
-      await AsyncStorage.removeItem('guestMode');
+      await AsyncStorage.removeItem('guest_mode');
       setState(prevState => ({
         ...prevState,
         isGuestMode: false
@@ -151,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Continue as guest function
   const continueAsGuest = async () => {
     // Set guest mode
-    await AsyncStorage.setItem('guestMode', 'true');
+    await AsyncStorage.setItem('guest_mode', 'true');
     setState({
       session: null,
       user: null,

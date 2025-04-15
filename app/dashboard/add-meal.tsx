@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { Text, TextInput, Button, Surface, Chip, IconButton, useTheme, Avatar } from 'react-native-paper';
+import { Text, TextInput, Button, Surface, Chip, IconButton, useTheme, Avatar, Divider, RadioButton, SegmentedButtons } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system';
+import { Ionicons } from '@expo/vector-icons';
 import { useMeals, FoodItem } from '../../lib/meals';
 import { analyzeFoodImage } from '../../lib/services/vision-api';
 import { config } from '../../lib/config';
+import { useProfile } from '../../lib/auth/profile-context';
+
+// Entry methods
+type EntryMethod = 'manual' | 'ai';
 
 // Mock data for food suggestions
 const foodSuggestions = [
@@ -27,16 +32,17 @@ const foodSuggestions = [
 
 // Meal types
 const mealTypes = [
-  { id: 'breakfast', name: 'Breakfast', icon: 'food-croissant' },
-  { id: 'lunch', name: 'Lunch', icon: 'food' },
-  { id: 'dinner', name: 'Dinner', icon: 'food-turkey' },
-  { id: 'snack', name: 'Snack', icon: 'food-apple' },
+  { id: 'breakfast', name: 'Breakfast', icon: 'cafe-outline' },
+  { id: 'lunch', name: 'Lunch', icon: 'fast-food-outline' },
+  { id: 'dinner', name: 'Dinner', icon: 'restaurant-outline' },
+  { id: 'snack', name: 'Snack', icon: 'nutrition-outline' },
 ];
 
 export default function AddMeal() {
   const router = useRouter();
   const theme = useTheme();
   const { addMeal } = useMeals();
+  const { aiCreditsAvailable, useAICredit } = useProfile();
   const [mealName, setMealName] = useState('');
   const [selectedMealType, setSelectedMealType] = useState('breakfast');
   const [foodItems, setFoodItems] = useState<typeof foodSuggestions>([]);
@@ -45,6 +51,15 @@ export default function AddMeal() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<any>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [entryMethod, setEntryMethod] = useState<EntryMethod>('manual');
+  
+  // Manual food entry fields
+  const [manualFoodName, setManualFoodName] = useState('');
+  const [manualProtein, setManualProtein] = useState('');
+  const [manualCarbs, setManualCarbs] = useState('');
+  const [manualFat, setManualFat] = useState('');
+  const [manualCalories, setManualCalories] = useState('');
+  const [manualServingSize, setManualServingSize] = useState('');
 
   // Calculate total nutrition
   const totalCalories = foodItems.reduce((sum, item) => sum + item.calories, 0);
@@ -75,8 +90,70 @@ export default function AddMeal() {
     }
   };
 
+  // Add manually entered food item
+  const handleAddManualFoodItem = () => {
+    if (!manualFoodName || !manualCalories) {
+      // Basic validation
+      alert('Please enter a food name and calories at minimum');
+      return;
+    }
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Create a new food item from manual entry
+    const newItem = {
+      id: Date.now().toString(),
+      name: manualFoodName,
+      calories: parseInt(manualCalories) || 0,
+      protein: parseFloat(manualProtein) || 0,
+      carbs: parseFloat(manualCarbs) || 0,
+      fat: parseFloat(manualFat) || 0,
+      servingSize: manualServingSize || undefined
+    };
+
+    // Add to list of items
+    setFoodItems([...foodItems, newItem]);
+
+    // Clear form
+    setManualFoodName('');
+    setManualProtein('');
+    setManualCarbs('');
+    setManualFat('');
+    setManualCalories('');
+    setManualServingSize('');
+
+    // Provide feedback
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  // Calculate calories from macros
+  const calculateCaloriesFromMacros = () => {
+    const protein = parseFloat(manualProtein) || 0;
+    const carbs = parseFloat(manualCarbs) || 0;
+    const fat = parseFloat(manualFat) || 0;
+
+    // 4 calories per gram for protein and carbs, 9 for fat
+    const calories = (protein * 4) + (carbs * 4) + (fat * 9);
+    setManualCalories(Math.round(calories).toString());
+  };
+
+  // Listen for changes to macros to auto-calculate calories
+  useEffect(() => {
+    if (manualProtein || manualCarbs || manualFat) {
+      calculateCaloriesFromMacros();
+    }
+  }, [manualProtein, manualCarbs, manualFat]);
+
   const handleTakePicture = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Check for AI credits first if using AI mode
+    if (entryMethod === 'ai') {
+      if (aiCreditsAvailable <= 0) {
+        alert('You have no AI credits left. Please switch to manual entry or purchase more credits.');
+        return;
+      }
+    }
     
     // Request camera permissions
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -96,13 +173,23 @@ export default function AddMeal() {
     
     if (!result.canceled) {
       setMealImage(result.assets[0].uri);
-      // Process the image with AI
-      processImageWithAI(result.assets[0].uri);
+      // Process the image with AI if in AI mode
+      if (entryMethod === 'ai') {
+        processImageWithAI(result.assets[0].uri);
+      }
     }
   };
 
   const handleSelectImage = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    // Check for AI credits first if using AI mode
+    if (entryMethod === 'ai') {
+      if (aiCreditsAvailable <= 0) {
+        alert('You have no AI credits left. Please switch to manual entry or purchase more credits.');
+        return;
+      }
+    }
     
     // Request media library permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -122,8 +209,10 @@ export default function AddMeal() {
     
     if (!result.canceled) {
       setMealImage(result.assets[0].uri);
-      // Process the image with AI
-      processImageWithAI(result.assets[0].uri);
+      // Process the image with AI if in AI mode
+      if (entryMethod === 'ai') {
+        processImageWithAI(result.assets[0].uri);
+      }
     }
   };
 
@@ -131,6 +220,16 @@ export default function AddMeal() {
     try {
       setIsAnalyzing(true);
       setAnalysisError(null);
+      
+      // Use an AI credit
+      if (entryMethod === 'ai') {
+        const { success, remainingCredits } = await useAICredit();
+        if (!success) {
+          setAnalysisError('No AI credits available. Please switch to manual entry or purchase more credits.');
+          setIsAnalyzing(false);
+          return;
+        }
+      }
       
       // Get file info to check size
       const fileInfo = await FileSystem.getInfoAsync(imageUri);
@@ -194,303 +293,340 @@ export default function AddMeal() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
+        style={{flex: 1}}
       >
-        <View style={styles.header}>
-          <IconButton 
-            icon="arrow-left" 
-            size={24} 
-            onPress={() => router.back()} 
-            iconColor={theme.colors.primary}
-          />
-          <Text variant="headlineSmall" style={styles.headerTitle}>Add Meal</Text>
-          <IconButton 
-            icon="check" 
-            size={24} 
-            onPress={handleSaveMeal} 
-            iconColor={theme.colors.primary}
-            disabled={foodItems.length === 0}
-          />
-        </View>
-
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          {/* Meal Type Selection */}
-          <Text variant="titleMedium" style={styles.sectionTitle}>Meal Type</Text>
-          <View style={styles.mealTypeContainer}>
-            {mealTypes.map((type) => (
-              <TouchableOpacity 
-                key={type.id} 
-                style={[
-                  styles.mealTypeItem,
-                  selectedMealType === type.id && { 
-                    backgroundColor: theme.colors.primaryContainer,
-                    borderColor: theme.colors.primary 
-                  }
-                ]}
-                onPress={() => handleSelectMealType(type.id)}
-              >
-                <Avatar.Icon 
-                  size={40} 
-                  icon={type.icon} 
-                  color={selectedMealType === type.id ? theme.colors.primary : theme.colors.onSurfaceVariant}
-                  style={{ backgroundColor: 'transparent' }}
-                />
-                <Text 
-                  variant="bodyMedium"
-                  style={[
-                    styles.mealTypeText,
-                    selectedMealType === type.id && { color: theme.colors.primary }
-                  ]}
-                >
-                  {type.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        <ScrollView style={styles.scrollContainer}>
+          <View style={styles.header}>
+            <IconButton
+              icon="arrow-left"
+              size={24}
+              onPress={() => router.back()}
+            />
+            <Text variant="headlineSmall">Add Meal</Text>
+            <View style={{width: 40}} />
           </View>
-
-          {/* Meal Name Input */}
-          <Text variant="titleMedium" style={styles.sectionTitle}>Meal Name</Text>
-          <TextInput
-            mode="outlined"
-            placeholder="Enter meal name"
-            value={mealName}
-            onChangeText={setMealName}
-            style={styles.input}
-            outlineColor={theme.colors.outline}
-            activeOutlineColor={theme.colors.primary}
-          />
-
-          {/* Photo Capture */}
-          <Text variant="titleMedium" style={styles.sectionTitle}>Add Photo for AI Analysis</Text>
-          <View style={styles.photoContainer}>
-            {mealImage ? (
-              <View style={styles.imagePreviewContainer}>
-                <Image source={{ uri: mealImage }} style={styles.imagePreview} />
-                <IconButton 
-                  icon="close-circle" 
-                  size={24} 
-                  onPress={() => setMealImage(null)} 
-                  style={styles.removeImageButton}
-                  iconColor={theme.colors.error}
-                />
-              </View>
-            ) : (
-              <LinearGradient
-                colors={[theme.colors.surfaceVariant, theme.colors.surface]}
-                style={styles.photoPlaceholder}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Avatar.Icon 
-                  size={60} 
-                  icon="camera-iris" 
-                  style={{ backgroundColor: 'transparent', marginBottom: 12 }}
-                  color={theme.colors.primary}
-                />
-                <Text variant="bodyLarge" style={styles.photoPlaceholderText}>
-                  Take a photo of your meal for AI analysis
-                </Text>
-                <Text variant="bodySmall" style={[styles.photoPlaceholderText, { marginTop: 8 }]}>
-                  Our AI will identify food items and calculate nutrition
-                </Text>
-                <Text variant="bodySmall" style={[styles.photoPlaceholderText, { marginTop: 4, fontStyle: 'italic' }]}>
-                  {config.googleCloudVisionApiKey && config.googleCloudVisionApiKey !== 'YOUR_GOOGLE_CLOUD_VISION_API_KEY'
-                    ? 'Powered by Google Cloud Vision'
-                    : 'Demo Mode - No API Key Configured'}
-                </Text>
-              </LinearGradient>
-            )}
+          
+          <View style={styles.content}>
+            {/* Entry Method Selector */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Choose Entry Method</Text>
+            <SegmentedButtons
+              value={entryMethod}
+              onValueChange={(value) => setEntryMethod(value as EntryMethod)}
+              buttons={[
+                {
+                  value: 'manual',
+                  label: 'Manual Entry',
+                  icon: 'pencil',
+                },
+                {
+                  value: 'ai',
+                  label: `AI Analysis (${aiCreditsAvailable} credits)`,
+                  icon: 'camera',
+                  disabled: aiCreditsAvailable <= 0
+                },
+              ]}
+              style={styles.segmentedButtons}
+            />
             
-            <View style={styles.photoButtonsContainer}>
-              <Button 
-                mode="contained" 
-                onPress={handleTakePicture}
-                style={[styles.photoButton, { backgroundColor: theme.colors.primary }]}
-                icon="camera"
-              >
-                Camera
-              </Button>
-              <Button 
-                mode="outlined" 
-                onPress={handleSelectImage}
-                style={styles.photoButton}
-                textColor={theme.colors.primary}
-                icon="image"
-              >
-                Gallery
-              </Button>
+            {/* Meal Type Selection */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Meal Type</Text>
+            <View style={styles.mealTypesContainer}>
+              {mealTypes.map((type) => (
+                <TouchableOpacity
+                  key={type.id}
+                  style={[
+                    styles.mealTypeItem,
+                    selectedMealType === type.id && styles.mealTypeSelected,
+                  ]}
+                  onPress={() => handleSelectMealType(type.id)}
+                >
+                  <Ionicons
+                    name={type.icon as any}
+                    size={24}
+                    color={selectedMealType === type.id ? theme.colors.primary : theme.colors.onBackground}
+                  />
+                  <Text
+                    style={[
+                      styles.mealTypeText,
+                      selectedMealType === type.id && styles.mealTypeTextSelected,
+                    ]}
+                  >
+                    {type.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          </View>
 
-          {isAnalyzing && (
-            <Surface style={styles.analyzingContainer} elevation={0}>
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 16 }} />
-                <Text variant="bodyLarge" style={{ textAlign: 'center', marginBottom: 8 }}>
-                  Analyzing your meal...
-                </Text>
-                <Text variant="bodyMedium" style={{ textAlign: 'center', color: 'rgba(0, 0, 0, 0.6)' }}>
-                  Our AI is identifying food items and calculating nutrition
-                </Text>
-              </View>
-            </Surface>
-          )}
+            {/* Meal Name */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Meal Name</Text>
+            <TextInput
+              mode="outlined"
+              label="Name your meal"
+              value={mealName}
+              onChangeText={setMealName}
+              style={styles.input}
+              activeOutlineColor={theme.colors.primary}
+            />
 
-          {analysisError && (
-            <Surface style={[styles.analyzingContainer, { backgroundColor: 'rgba(255, 0, 0, 0.05)' }]} elevation={0}>
-              <Text variant="bodyLarge" style={{ textAlign: 'center', marginBottom: 8, color: theme.colors.error }}>
-                Analysis Error
-              </Text>
-              <Text variant="bodyMedium" style={{ textAlign: 'center', color: 'rgba(0, 0, 0, 0.6)' }}>
-                {analysisError}
-              </Text>
-            </Surface>
-          )}
-
-          {analysisResult && !isAnalyzing && (
-            <Surface style={[styles.analyzingContainer, { backgroundColor: 'rgba(0, 255, 0, 0.05)' }]} elevation={0}>
-              <View style={styles.analysisResultHeader}>
-                <Avatar.Icon 
-                  size={36} 
-                  icon="check-circle" 
-                  style={{ backgroundColor: 'transparent' }}
-                  color={theme.colors.primary}
-                />
-                <Text variant="titleMedium" style={{ color: theme.colors.primary, marginLeft: 8 }}>
-                  Analysis Complete
-                </Text>
-              </View>
-              
-              <Text variant="bodyMedium" style={{ textAlign: 'center', marginBottom: 8 }}>
-                {analysisResult.detectedItems.length} food {analysisResult.detectedItems.length === 1 ? 'item' : 'items'} detected with {Math.round(analysisResult.confidence * 100)}% confidence
-              </Text>
-              
-              <View style={styles.detectedItemsChips}>
-                {analysisResult.detectedItems.map((item, index) => (
-                  <Chip 
-                    key={index}
-                    style={{ margin: 4, backgroundColor: theme.colors.primaryContainer }}
-                    icon="food"
+            {/* Manual Entry Section */}
+            {entryMethod === 'manual' && (
+              <View style={styles.manualEntryContainer}>
+                <Text variant="titleMedium" style={styles.sectionTitle}>Manual Food Entry</Text>
+                <Surface style={styles.manualEntrySurface}>
+                  <TextInput
+                    mode="outlined"
+                    label="Food Name"
+                    value={manualFoodName}
+                    onChangeText={setManualFoodName}
+                    style={styles.input}
+                    autoCapitalize="words"
+                    activeOutlineColor={theme.colors.primary}
+                  />
+                  
+                  <View style={styles.macroInputsRow}>
+                    <TextInput
+                      mode="outlined"
+                      label="Protein (g)"
+                      value={manualProtein}
+                      onChangeText={setManualProtein}
+                      style={[styles.input, styles.macroInput]}
+                      keyboardType="numeric"
+                      activeOutlineColor={theme.colors.primary}
+                    />
+                    <TextInput
+                      mode="outlined"
+                      label="Carbs (g)"
+                      value={manualCarbs}
+                      onChangeText={setManualCarbs}
+                      style={[styles.input, styles.macroInput]}
+                      keyboardType="numeric"
+                      activeOutlineColor={theme.colors.primary}
+                    />
+                    <TextInput
+                      mode="outlined"
+                      label="Fat (g)"
+                      value={manualFat}
+                      onChangeText={setManualFat}
+                      style={[styles.input, styles.macroInput]}
+                      keyboardType="numeric"
+                      activeOutlineColor={theme.colors.primary}
+                    />
+                  </View>
+                  
+                  <TextInput
+                    mode="outlined"
+                    label="Calories"
+                    value={manualCalories}
+                    onChangeText={setManualCalories}
+                    style={styles.input}
+                    keyboardType="numeric"
+                    activeOutlineColor={theme.colors.primary}
+                  />
+                  <TextInput
+                    mode="outlined"
+                    label="Serving Size"
+                    value={manualServingSize}
+                    onChangeText={setManualServingSize}
+                    style={styles.input}
+                    autoCapitalize="words"
+                    activeOutlineColor={theme.colors.primary}
+                  />
+                  <Button 
+                    mode="contained" 
+                    onPress={handleAddManualFoodItem}
+                    style={styles.addManualButton}
+                    icon="plus"
                   >
-                    {item.name}
-                  </Chip>
-                ))}
+                    Add Food Item
+                  </Button>
+                </Surface>
               </View>
-              
-              <Text variant="bodySmall" style={{ textAlign: 'center', color: 'rgba(0, 0, 0, 0.6)', marginTop: 8 }}>
-                {analysisResult.message.includes('DEMO MODE') 
-                  ? 'Using Demo Mode (No API Key)' 
-                  : 'Powered by Google Cloud Vision'}
-              </Text>
-            </Surface>
-          )}
+            )}
 
-          {/* Food Items */}
-          <Text variant="titleMedium" style={styles.sectionTitle}>Food Items</Text>
-          <TextInput
-            mode="outlined"
-            placeholder="Search for food items"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            style={styles.input}
-            outlineColor={theme.colors.outline}
-            activeOutlineColor={theme.colors.primary}
-            left={<TextInput.Icon icon="magnify" />}
-          />
-
-          {searchQuery && (
-            <Surface style={styles.suggestionsContainer} elevation={1}>
-              {filteredSuggestions.length > 0 ? (
-                filteredSuggestions.map((item) => (
-                  <TouchableOpacity 
-                    key={item.id} 
-                    style={styles.suggestionItem}
-                    onPress={() => handleAddFoodItem(item)}
-                  >
-                    <View>
-                      <Text variant="bodyMedium">{item.name}</Text>
-                      <Text variant="bodySmall" style={{ color: 'rgba(0, 0, 0, 0.6)' }}>
-                        {item.calories} cal | P: {item.protein}g | C: {item.carbs}g | F: {item.fat}g
+            {/* AI Analysis Section */}
+            {entryMethod === 'ai' && (
+              <View style={styles.aiAnalysisContainer}>
+                <Surface style={styles.aiCreditInfo}>
+                  <Ionicons name="flash" size={24} color={aiCreditsAvailable > 0 ? theme.colors.primary : theme.colors.error} />
+                  <Text variant="titleMedium" style={{ marginLeft: 8 }}>
+                    {aiCreditsAvailable} AI Credits Available
+                  </Text>
+                </Surface>
+                
+                {/* Image Input for AI Analysis */}
+                <Surface style={styles.imageUploadContainer}>
+                  {!mealImage ? (
+                    <View style={styles.imageOptions}>
+                      <Text variant="titleMedium" style={styles.imageUploadText}>
+                        Take or select a photo of your meal for AI analysis
                       </Text>
+                      <View style={styles.imageButtonsContainer}>
+                        <Button 
+                          mode="contained"
+                          icon="camera" 
+                          onPress={handleTakePicture}
+                          style={styles.imageButton}
+                          disabled={aiCreditsAvailable <= 0}
+                        >
+                          Take Photo
+                        </Button>
+                        <Button 
+                          mode="contained"
+                          icon="image" 
+                          onPress={handleSelectImage}
+                          style={styles.imageButton}
+                          disabled={aiCreditsAvailable <= 0}
+                        >
+                          Choose Photo
+                        </Button>
+                      </View>
+                      {aiCreditsAvailable <= 0 && (
+                        <Text style={styles.errorText}>
+                          You need credits to use AI analysis. Get more credits or switch to manual entry.
+                        </Text>
+                      )}
                     </View>
-                    <IconButton icon="plus" size={20} onPress={() => handleAddFoodItem(item)} />
-                  </TouchableOpacity>
-                ))
+                  ) : (
+                    <View style={styles.imagePreviewContainer}>
+                      <Image source={{ uri: mealImage }} style={styles.imagePreview} />
+                      <View style={styles.imageOverlay}>
+                        <IconButton
+                          icon="refresh"
+                          size={24}
+                          onPress={() => {
+                            setMealImage(null);
+                            setAnalysisResult(null);
+                            setAnalysisError(null);
+                          }}
+                          style={styles.retakeButton}
+                          mode="contained"
+                        />
+                      </View>
+                      {isAnalyzing && (
+                        <View style={styles.analysisOverlay}>
+                          <ActivityIndicator size="large" color={theme.colors.primary} />
+                          <Text style={styles.analysisText}>Analyzing your meal...</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </Surface>
+
+                {/* Analysis Results or Error */}
+                {analysisError && (
+                  <Surface style={[styles.analysisFeedback, styles.analysisError]}>
+                    <Ionicons name="alert-circle" size={24} color={theme.colors.error} />
+                    <Text style={styles.errorText}>{analysisError}</Text>
+                  </Surface>
+                )}
+
+                {analysisResult && (
+                  <Surface style={[styles.analysisFeedback, styles.analysisSuccess]}>
+                    <Ionicons name="checkmark-circle" size={24} color={theme.colors.primary} />
+                    <Text style={styles.successText}>
+                      Successfully identified {analysisResult.detectedItems.length} items in your meal!
+                    </Text>
+                  </Surface>
+                )}
+              </View>
+            )}
+
+            {/* Current Food Items */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Food Items</Text>
+            <Surface style={styles.foodItemsContainer}>
+              {foodItems.length === 0 ? (
+                <Text style={styles.emptyText}>No food items added yet</Text>
               ) : (
-                <Text style={styles.noResultsText}>No results found</Text>
+                foodItems.map((item) => (
+                  <Surface key={item.id} style={styles.foodItem}>
+                    <View style={styles.foodItemContent}>
+                      <Text variant="titleMedium">{item.name}</Text>
+                      <View style={styles.macrosContainer}>
+                        <Chip icon="fire" style={styles.macroChip}>{item.calories} cal</Chip>
+                        {item.protein > 0 && <Chip icon="arm-flex" style={styles.macroChip}>{item.protein}g protein</Chip>}
+                        {item.carbs > 0 && <Chip icon="barley" style={styles.macroChip}>{item.carbs}g carbs</Chip>}
+                        {item.fat > 0 && <Chip icon="oil" style={styles.macroChip}>{item.fat}g fat</Chip>}
+                      </View>
+                    </View>
+                    <IconButton
+                      icon="delete"
+                      size={20}
+                      onPress={() => handleRemoveFoodItem(item.id)}
+                      style={styles.removeButton}
+                    />
+                  </Surface>
+                ))
+              )}
+
+              {/* Food Search for Quick Adding */}
+              <TextInput
+                mode="outlined"
+                label="Quick search for foods"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                style={styles.searchInput}
+                right={<TextInput.Icon icon="magnify" />}
+                activeOutlineColor={theme.colors.primary}
+              />
+
+              {/* Food Suggestions */}
+              {searchQuery.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {foodSuggestions
+                    .filter(item => 
+                      item.name.toLowerCase().includes(searchQuery.toLowerCase())
+                    )
+                    .map(item => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.suggestionItem}
+                        onPress={() => handleAddFoodItem(item)}
+                      >
+                        <Text>{item.name}</Text>
+                        <Text style={styles.suggestionCalories}>{item.calories} cal</Text>
+                      </TouchableOpacity>
+                    ))
+                  }
+                </View>
               )}
             </Surface>
-          )}
 
-          {foodItems.length > 0 && (
-            <Surface style={styles.selectedItemsContainer} elevation={0}>
-              <Text variant="titleSmall" style={styles.selectedItemsTitle}>Selected Items</Text>
-              
-              {foodItems.map((item) => (
-                <View key={item.id} style={styles.selectedItem}>
-                  <View style={styles.selectedItemInfo}>
-                    <Text variant="bodyMedium">{item.name}</Text>
-                    <Text variant="bodySmall" style={{ color: 'rgba(0, 0, 0, 0.6)' }}>
-                      {item.calories} cal | P: {item.protein}g | C: {item.carbs}g | F: {item.fat}g
-                    </Text>
-                  </View>
-                  <IconButton 
-                    icon="close" 
-                    size={20} 
-                    onPress={() => handleRemoveFoodItem(item.id)}
-                    iconColor={theme.colors.error}
-                  />
-                </View>
-              ))}
-
-              <View style={styles.nutritionSummary}>
-                <Text variant="titleSmall" style={styles.nutritionSummaryTitle}>Total Nutrition</Text>
-                <View style={styles.nutritionRow}>
-                  <Chip 
-                    icon="fire" 
-                    style={[styles.nutritionChip, { backgroundColor: theme.colors.primaryContainer }]}
-                  >
-                    {totalCalories} calories
-                  </Chip>
-                  <Chip 
-                    icon="food-drumstick" 
-                    style={[styles.nutritionChip, { backgroundColor: theme.colors.secondaryContainer }]}
-                  >
-                    {totalProtein.toFixed(1)}g protein
-                  </Chip>
-                </View>
-                <View style={styles.nutritionRow}>
-                  <Chip 
-                    icon="bread-slice" 
-                    style={[styles.nutritionChip, { backgroundColor: theme.colors.secondaryContainer }]}
-                  >
-                    {totalCarbs.toFixed(1)}g carbs
-                  </Chip>
-                  <Chip 
-                    icon="oil" 
-                    style={[styles.nutritionChip, { backgroundColor: theme.colors.tertiaryContainer }]}
-                  >
-                    {totalFat.toFixed(1)}g fat
-                  </Chip>
-                </View>
+            {/* Nutrition Summary */}
+            <Text variant="titleMedium" style={styles.sectionTitle}>Nutrition Summary</Text>
+            <Surface style={styles.nutritionSummary}>
+              <View style={styles.nutritionItem}>
+                <Text variant="titleMedium">Calories</Text>
+                <Text variant="titleLarge">{totalCalories}</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text variant="titleMedium">Protein</Text>
+                <Text variant="titleLarge">{totalProtein}g</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text variant="titleMedium">Carbs</Text>
+                <Text variant="titleLarge">{totalCarbs}g</Text>
+              </View>
+              <View style={styles.nutritionItem}>
+                <Text variant="titleMedium">Fat</Text>
+                <Text variant="titleLarge">{totalFat}g</Text>
               </View>
             </Surface>
-          )}
-        </ScrollView>
 
-        <View style={styles.buttonContainer}>
-          <Button
-            mode="contained"
-            onPress={handleSaveMeal}
-            style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
-            disabled={foodItems.length === 0}
-          >
-            Save Meal
-          </Button>
-        </View>
+            {/* Save Button */}
+            <Button
+              mode="contained"
+              onPress={handleSaveMeal}
+              style={styles.saveButton}
+              labelStyle={styles.saveButtonLabel}
+              disabled={foodItems.length === 0 || !mealName}
+            >
+              Save Meal
+            </Button>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -500,174 +636,232 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  headerTitle: {
-    fontWeight: 'bold',
-  },
-  scrollView: {
+  scrollContainer: {
     flex: 1,
   },
-  scrollContent: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  content: {
     padding: 16,
-    paddingBottom: 100,
   },
   sectionTitle: {
-    marginBottom: 12,
-    fontWeight: 'bold',
+    marginTop: 16,
+    marginBottom: 8,
   },
   input: {
-    marginBottom: 16,
-    backgroundColor: 'transparent',
+    marginBottom: 12,
   },
-  mealTypeContainer: {
+  mealTypesContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 16,
   },
   mealTypeItem: {
     alignItems: 'center',
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
-    width: '22%',
+    borderColor: 'rgba(0,0,0,0.12)',
+    minWidth: 80,
+  },
+  mealTypeSelected: {
+    backgroundColor: 'rgba(98, 0, 238, 0.1)',
+    borderColor: 'rgba(98, 0, 238, 0.5)',
   },
   mealTypeText: {
-    marginTop: 8,
-    fontSize: 12,
+    marginTop: 4,
+    textAlign: 'center',
   },
-  photoContainer: {
+  mealTypeTextSelected: {
+    color: 'rgba(98, 0, 238, 1)',
+    fontWeight: 'bold',
+  },
+  segmentedButtons: {
+    marginBottom: 16,
+  },
+  manualEntryContainer: {
     marginBottom: 24,
   },
-  photoPlaceholder: {
-    height: 200,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
+  manualEntrySurface: {
     padding: 16,
-  },
-  photoPlaceholderText: {
-    textAlign: 'center',
-    color: 'rgba(0, 0, 0, 0.6)',
-  },
-  imagePreviewContainer: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  imagePreview: {
-    width: '100%',
-    height: 200,
     borderRadius: 12,
+    elevation: 2,
   },
-  removeImageButton: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-  },
-  photoButtonsContainer: {
+  macroInputsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-  photoButton: {
+  macroInput: {
     flex: 1,
     marginHorizontal: 4,
   },
-  analyzingContainer: {
+  aiAnalysisContainer: {
+    marginBottom: 24,
+  },
+  aiCreditInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  imageUploadContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    elevation: 2,
+  },
+  imageOptions: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  imageUploadText: {
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  imageButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+  },
+  imageButton: {
+    marginHorizontal: 8,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    height: 300,
+    width: '100%',
+  },
+  imagePreview: {
+    height: '100%',
+    width: '100%',
+    resizeMode: 'cover',
+  },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    padding: 8,
+  },
+  retakeButton: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  analysisOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  analysisText: {
+    color: 'white',
+    marginTop: 12,
+    fontSize: 16,
+  },
+  analysisFeedback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  analysisError: {
+    backgroundColor: 'rgba(255,0,0,0.05)',
+  },
+  analysisSuccess: {
+    backgroundColor: 'rgba(0,255,0,0.05)',
+  },
+  errorText: {
+    color: 'red',
+    marginLeft: 8,
+    flex: 1,
+  },
+  successText: {
+    color: 'green',
+    marginLeft: 8,
+    flex: 1,
+  },
+  foodItemsContainer: {
     padding: 16,
     borderRadius: 12,
     marginBottom: 24,
-    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 193, 7, 0.3)',
+    elevation: 2,
   },
-  loadingContainer: {
+  emptyText: {
+    textAlign: 'center',
+    fontStyle: 'italic',
+    padding: 16,
+  },
+  foodItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    elevation: 1,
+  },
+  foodItemContent: {
+    flex: 1,
+  },
+  macrosContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  macroChip: {
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  removeButton: {
+    marginLeft: 8,
+  },
+  searchInput: {
+    marginTop: 16,
   },
   suggestionsContainer: {
-    marginTop: -8,
-    marginBottom: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.1)',
     borderRadius: 8,
-    overflow: 'hidden',
+    maxHeight: 200,
   },
   suggestionItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+    borderBottomColor: 'rgba(0,0,0,0.05)',
   },
-  noResultsText: {
-    padding: 16,
-    textAlign: 'center',
-    color: 'rgba(0, 0, 0, 0.6)',
+  suggestionCalories: {
+    opacity: 0.6,
   },
-  selectedItemsContainer: {
+  nutritionSummary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     padding: 16,
     borderRadius: 12,
     marginBottom: 24,
+    elevation: 2,
   },
-  selectedItemsTitle: {
-    marginBottom: 12,
-    fontWeight: 'bold',
-  },
-  selectedItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  nutritionItem: {
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  selectedItemInfo: {
-    flex: 1,
-  },
-  nutritionSummary: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  nutritionSummaryTitle: {
-    marginBottom: 12,
-    fontWeight: 'bold',
-  },
-  nutritionRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  nutritionChip: {
-    marginRight: 8,
-  },
-  buttonContainer: {
-    padding: 16,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(0, 0, 0, 0.05)',
-    backgroundColor: 'white',
   },
   saveButton: {
-    borderRadius: 12,
+    marginVertical: 24,
+    paddingVertical: 8,
+    borderRadius: 28,
+  },
+  saveButtonLabel: {
+    fontSize: 16,
+    paddingVertical: 4,
+  },
+  addManualButton: {
+    marginTop: 16,
+    borderRadius: 8,
     paddingVertical: 6,
-  },
-  analysisResultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  detectedItemsChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    marginBottom: 12,
   },
 });

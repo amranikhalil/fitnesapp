@@ -3,9 +3,13 @@ import { PaperProvider, MD3LightTheme } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../lib/auth';
+import { ProfileProvider } from '../lib/auth/profile-context';
 import { MealsProvider } from '../lib/meals';
 import { ProgramsProvider } from '../lib/programs/programs-context';
+import { StatisticsProvider } from '../lib/statistics/statistics-context';
 import { View, ActivityIndicator } from 'react-native';
+import { useEffect } from 'react';
+import { setupDatabase } from '../lib/utils/setup-db';
 
 // Custom theme with modern color palette
 const theme = {
@@ -35,6 +39,26 @@ const theme = {
 // Root layout with authentication logic
 function RootLayoutNav() {
   const { isLoading, isAuthenticated, isGuestMode } = useAuth();
+
+  // Initialize database on app startup
+  useEffect(() => {
+    const initializeDatabase = async () => {
+      try {
+        // Only attempt to set up the database if the user is authenticated
+        if (isAuthenticated && !isGuestMode) {
+          const result = await setupDatabase();
+          console.log('Database initialization result:', result);
+        }
+      } catch (error) {
+        console.error('Error initializing database:', error);
+        // Continue app flow even if database initialization fails
+        // The statistics context has fallback mechanisms
+      }
+    };
+
+    // Run database initialization
+    initializeDatabase();
+  }, [isAuthenticated, isGuestMode]);
 
   // Show loading screen while checking auth status
   if (isLoading) {
@@ -71,11 +95,15 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <StatusBar style="auto" />
         <AuthProvider>
-          <MealsProvider>
-            <ProgramsProvider>
-              <RootLayoutNav />
-            </ProgramsProvider>
-          </MealsProvider>
+          <ProfileProvider>
+            <MealsProvider>
+              <ProgramsProvider>
+                <StatisticsProvider>
+                  <RootLayoutNav />
+                </StatisticsProvider>
+              </ProgramsProvider>
+            </MealsProvider>
+          </ProfileProvider>
         </AuthProvider>
       </SafeAreaProvider>
     </PaperProvider>

@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
+import { View } from 'react-native';
 
 export default function DashboardLayout() {
   const theme = useTheme();
@@ -15,13 +16,24 @@ export default function DashboardLayout() {
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: 'gray',
           tabBarStyle: {
-            borderTopWidth: 1,
-            borderTopColor: '#f0f0f0',
-            elevation: 5,
+            height: 60,
+            paddingBottom: 10,
+            paddingTop: 5,
+            borderTopWidth: 0,
+            elevation: 8,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: -2 },
             shadowOpacity: 0.1,
             shadowRadius: 3,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+          },
+          tabBarLabelStyle: {
+            fontSize: 12,
+            fontWeight: '500',
+          },
+          tabBarIconStyle: {
+            marginBottom: -4,
           },
         }}
       >
@@ -30,16 +42,25 @@ export default function DashboardLayout() {
           options={{
             title: 'Dashboard',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="home-outline" size={size} color={color} />
+              <Ionicons name="home" size={size} color={color} />
             ),
           }}
         />
         <Tabs.Screen
-          name="meal-program"
+          name="statistics"
           options={{
-            title: 'Meal Program',
+            title: 'Progress',
             tabBarIcon: ({ color, size }) => (
-              <Ionicons name="nutrition-outline" size={size} color={color} />
+              <Ionicons name="analytics" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="meal-program/index"
+          options={{
+            title: 'Meals',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="restaurant" size={size} color={color} />
             ),
           }}
         />
@@ -53,6 +74,15 @@ export default function DashboardLayout() {
           name="meal-details"
           options={{
             href: null, // Hide this from the tab bar
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="person" size={size} color={color} />
+            ),
           }}
         />
       </Tabs>
